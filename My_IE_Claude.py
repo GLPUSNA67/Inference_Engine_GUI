@@ -1,110 +1,125 @@
-# Simple Inference Engine
+# Updated 9/15/2024
+import tkinter as tk
+from tkinter import ttk
+import threading
+from solver import InferenceEngine
+from missionaries_cannibals import MCProblem
+from blocks_world import BWProblem, BWState
+from fifteen_puzzle import FifteenPuzzleProblem
+from sliding_block_puzzle import SlidingBlockPuzzleProblem
+from tower_of_hanoi import TowerOfHanoiProblem
+from abc import ABC, abstractmethod
+from main import *
 
-from collections import deque
 
-
-class State:
-    def __init__(self, left_m, left_c, boat_left):
-        self.left_m = max(0, min(3, left_m))
-        self.left_c = max(0, min(3, left_c))
-        self.boat_left = boat_left
-        self.right_m = 3 - self.left_m
-        self.right_c = 3 - self.left_c
-
+class State(ABC):
+    @abstractmethod
     def is_valid(self):
-        if self.left_m < 0 or self.left_c < 0 or self.right_m < 0 or self.right_c < 0:
-            return False
-        if (self.left_m < self.left_c and self.left_m > 0) or \
-           (self.right_m < self.right_c and self.right_m > 0):
-            return False
-        return True
+        pass
 
-    def is_goal(self):
-        return self.left_m == 0 and self.left_c == 0
+    @abstractmethod
+    def is_goal(self, goal_state):
+        pass
 
+    @abstractmethod
     def __eq__(self, other):
-        if other is None:
-            return False
-        return self.left_m == other.left_m and self.left_c == other.left_c and \
-            self.boat_left == other.boat_left
+        pass
 
+    @abstractmethod
     def __hash__(self):
-        return hash((self.left_m, self.left_c, self.boat_left))
+        pass
 
-    def __str__(self):
-        left_bank = "M" * self.left_m + "C" * self.left_c
-        right_bank = "M" * self.right_m + "C" * self.right_c
-        boat = "<" if self.boat_left else ">"
-        return "({0}){1}~~~{2}({3})".format(
-            left_bank.ljust(6),
-            boat if self.boat_left else " ",
-            " " if self.boat_left else boat,
-            right_bank.ljust(6)
-        )
+
+class Problem(ABC):
+    @abstractmethod
+    def get_initial_state(self):
+        pass
+
+    @abstractmethod
+    def get_goal_state(self):
+        pass
+
+    @abstractmethod
+    def get_possible_moves(self, state):
+        pass
+
+    @abstractmethod
+    def apply_move(self, state, move):
+        pass
+
+    @abstractmethod
+    def get_move_description(self, move):
+        pass
 
 
 class InferenceEngine:
-    def __init__(self):
-        self.initial_state = State(3, 3, True)
-        self.moves = [(1, 0), (2, 0), (0, 1), (0, 2), (1, 1)]
-
-    def get_possible_moves(self, state):
-        possible_moves = []
-        for m, c in self.moves:
-            if state.boat_left:
-                if m <= state.left_m and c <= state.left_c:
-                    possible_moves.append((m, c))
-            else:
-                if m <= state.right_m and c <= state.right_c:
-                    possible_moves.append((m, c))
-        return possible_moves
-
-    def apply_move(self, state, move):
-        m, c = move
-        if state.boat_left:
-            return State(state.left_m - m, state.left_c - c, False)
-        else:
-            return State(state.left_m + m, state.left_c + c, True)
-
-    def remove_redundant_steps(self, solution):
-        i = 0
-        while i < len(solution) - 1:
-            if solution[i] == (solution[i+1][1], solution[i+1][0]):
-                solution.pop(i)
-                solution.pop(i)
-            else:
-                i += 1
-        return solution
+    def __init__(self, problem):
+        self.problem = problem
 
     def solve(self):
         def dfs(state, path, visited):
-            if state.is_goal():
-                return [path]
+            if state.is_goal(self.problem.get_goal_state()):
+                return path
 
-            solutions = []
-            for move in self.get_possible_moves(state):
-                new_state = self.apply_move(state, move)
-                if not new_state.is_valid() or new_state in visited:
+            for move in self.problem.get_possible_moves(state):
+                new_state = self.problem.apply_move(state, move)
+
+                print("\nConsidering move:")
+                print(self.problem.get_move_description(move, state))
+                print("Current state: {}".format(state))
+                print("Resulting state: {}".format(new_state))
+
+                if not new_state.is_valid():
+                    print("Move rejected: Invalid state")
                     continue
+
+                if new_state in visited:
+                    print("Move rejected: State already visited")
+                    continue
+
+                print("Move accepted: Valid state")
                 visited.add(new_state)
                 result = dfs(new_state, path + [move], visited)
                 if result:
-                    solutions.extend(result)
+                    return result
                 visited.remove(new_state)
+                print("Backtracking from state:")
+                print(str(new_state))
 
-            return solutions
+            return None
 
-        all_solutions = dfs(self.initial_state, [], set())
+        initial_state = self.problem.get_initial_state()
+        solution = dfs(initial_state, [], set())
 
-        if all_solutions:
-            print(f"\nFound {len(all_solutions)} solutions:")
-            for i, solution in enumerate(all_solutions):
-                print(f"\nSolution {i + 1}:")
-                # Print the steps of this solution
+        if solution:
+            print("\nSolution found:")
+            current_state = initial_state
+            for i, move in enumerate(solution):
+                print("Step {}:".format(i))
+                print(self.problem.get_move_description(move, current_state))
+                print("Before: {}".format(current_state))
+                current_state = self.problem.apply_move(current_state, move)
+                print("After:  {}".format(current_state))
+                print()
         else:
             print("No solution found.")
 
+        return solution
 
-# Run the solver
-engine = InferenceEngine()
-engine.solve()
+
+# Example usage
+if __name__ == "__main__":
+    from missionaries_cannibals import MCProblem
+    from blocks_world import BWProblem, BWState
+
+    # Solve Missionaries and Cannibals Problem
+    mc_problem = MCProblem()
+    mc_engine = InferenceEngine(mc_problem)
+    mc_solution = mc_engine.solve()
+
+    # Solve Blocks World Problem
+    initial_state = BWState({'A': ['a', 'b', 'c'], 'B': [], 'C': []})
+    goal_state = BWState({'A': ['a'], 'B': ['b'], 'C': ['c']})
+    bw_problem = BWProblem(initial_state, goal_state)
+    bw_engine = InferenceEngine(bw_problem)
+    bw_solution = bw_engine.solve()
