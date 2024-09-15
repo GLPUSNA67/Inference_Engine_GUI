@@ -1,5 +1,6 @@
 from base_classes import State, Problem
 import random
+# Updated 9/15/2024
 
 
 class FifteenPuzzleState(State):
@@ -39,6 +40,48 @@ class FifteenPuzzleState(State):
             distance += abs(current_row - goal_row) + \
                 abs(current_col - goal_col)
         return distance
+
+    def manhattan_distance(self):
+        distance = 0
+        for i in range(16):
+            if i == 0:
+                continue
+            current_row, current_col = self.get_tile_position(i)
+            goal_row, goal_col = divmod(i - 1, 4)
+            distance += abs(current_row - goal_row) + \
+                abs(current_col - goal_col)
+        return distance
+
+    def linear_conflicts(self):
+        conflicts = 0
+        for row in range(4):
+            conflicts += self._count_conflicts_in_row(row)
+        for col in range(4):
+            conflicts += self._count_conflicts_in_column(col)
+        return conflicts * 2
+
+    def _count_conflicts_in_row(self, row):
+        conflicts = 0
+        tiles_in_row = [self.board[row * 4 + i]
+                        for i in range(4) if self.board[row * 4 + i] != 0]
+        for i in range(len(tiles_in_row)):
+            for j in range(i + 1, len(tiles_in_row)):
+                if tiles_in_row[i] > tiles_in_row[j] and (tiles_in_row[i] - 1) // 4 == row and (tiles_in_row[j] - 1) // 4 == row:
+                    conflicts += 1
+        return conflicts
+
+    def _count_conflicts_in_column(self, col):
+        conflicts = 0
+        tiles_in_col = [self.board[col + 4 * i]
+                        for i in range(4) if self.board[col + 4 * i] != 0]
+        for i in range(len(tiles_in_col)):
+            for j in range(i + 1, len(tiles_in_col)):
+                if tiles_in_col[i] > tiles_in_col[j] and (tiles_in_col[i] - 1) % 4 == col and (tiles_in_col[j] - 1) % 4 == col:
+                    conflicts += 1
+        return conflicts
+
+    def heuristic(self):
+        return self.manhattan_distance() + self.linear_conflicts()
 
 
 class FifteenPuzzleProblem(Problem):
