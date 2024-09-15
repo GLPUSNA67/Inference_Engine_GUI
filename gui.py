@@ -34,6 +34,14 @@ class SolverGUI:
             master, text="Copy", command=self.copy_output)
         self.copy_button.grid(row=0, column=3, padx=5, pady=5)
 
+        self.step_button = tk.Button(
+            master, text="Next Step", command=self.show_next_step, state=tk.DISABLED)
+        self.step_button.grid(row=1, column=0, padx=5, pady=5)
+
+        self.reset_button = tk.Button(
+            master, text="Reset", command=self.reset_solution, state=tk.DISABLED)
+        self.reset_button.grid(row=1, column=1, padx=5, pady=5)
+
         self.width_label = tk.Label(master, text="Width:")
         self.width_entry = tk.Entry(master, width=5)
         self.width_entry.insert(0, "3")  # Default width
@@ -58,6 +66,10 @@ class SolverGUI:
         self.progress_bar.grid(
             row=3, column=0, columnspan=4, sticky='ew', padx=5, pady=5)
 
+        self.solution = None
+        self.current_step = 0
+        self.problem = None
+
     def on_problem_select(self, event):
         problem = self.problem_var.get()
         self.width_label.grid_remove()
@@ -68,13 +80,13 @@ class SolverGUI:
         self.num_disks_entry.grid_remove()
 
         if problem == "Sliding Block Puzzle":
-            self.width_label.grid(row=1, column=0)
-            self.width_entry.grid(row=1, column=1)
-            self.height_label.grid(row=1, column=2)
-            self.height_entry.grid(row=1, column=3)
+            self.width_label.grid(row=1, column=2)
+            self.width_entry.grid(row=1, column=3)
+            self.height_label.grid(row=1, column=4)
+            self.height_entry.grid(row=1, column=5)
         elif problem == "Tower of Hanoi":
-            self.num_disks_label.grid(row=1, column=0)
-            self.num_disks_entry.grid(row=1, column=1)
+            self.num_disks_label.grid(row=1, column=2)
+            self.num_disks_entry.grid(row=1, column=3)
 
     def start_solve_thread(self):
         self.solve_button.config(state=tk.DISABLED)
@@ -88,56 +100,79 @@ class SolverGUI:
 
         try:
             if problem_type == "Missionaries and Cannibals":
-                problem = MCProblem()
+                self.problem = MCProblem()
             elif problem_type == "Blocks World":
                 initial_state = BWState(
                     {'A': ['a', 'b', 'c'], 'B': [], 'C': []})
                 goal_state = BWState({'A': ['a'], 'B': ['b'], 'C': ['c']})
-                problem = BWProblem(initial_state, goal_state)
+                self.problem = BWProblem(initial_state, goal_state)
             elif problem_type == "15 Puzzle":
-                problem = FifteenPuzzleProblem()
+                self.problem = FifteenPuzzleProblem()
             elif problem_type == "Sliding Block Puzzle":
                 try:
                     width = int(self.width_entry.get() or "3")
                     height = int(self.height_entry.get() or "3")
-                    problem = SlidingBlockPuzzleProblem(width, height)
+                    self.problem = SlidingBlockPuzzleProblem(width, height)
                 except ValueError:
                     raise ValueError(
                         "Invalid width or height. Please enter positive integers.")
             elif problem_type == "Tower of Hanoi":
                 num_disks = int(self.num_disks_entry.get() or "3")
-                problem = TowerOfHanoiProblem(num_disks)
+                self.problem = TowerOfHanoiProblem(num_disks)
             else:
                 raise ValueError("Invalid problem type selected.")
 
-            engine = InferenceEngine(problem)
+            engine = InferenceEngine(self.problem)
+            self.solution, moves_explored, time_taken = engine.solve()
 
-            i_s = f"Initial state:\n{problem.get_initial_state()}\n\n"
-            g_s = f"Goal state:\n{problem.get_goal_state()}\n\n"
-            self.output_text.insert(tk.END, i_s)
-            self.output_text.insert(tk.END, g_s)
-
-            solution = engine.solve()
-
-            if solution:
-                self.output_text.insert(tk.END, "Solution found:\n\n")
-                current_state = problem.get_initial_state()
-                for i, move in enumerate(solution):
-                    self.output_text.insert(tk.END, f"Step {i + 1}:\n")
-                    self.output_text.insert(
-                        tk.END, problem.get_move_description(move, current_state) + "\n")
-                    current_state = problem.apply_move(current_state, move)
-                    self.output_text.insert(
-                        tk.END, f"After move:\n{current_state}\n\n")
-                    self.progress_var.set((i + 1) / len(solution) * 100)
-                    self.master.update_idletasks()
+            if self.solution:
+                t_out = f"Solution found in {moves_explored} moves and "
+                t_out = t_out + f"{time_taken:.2f} seconds.\n\n"
+                is_out = f"Initial state:\n{self.problem.get_initial_state()}"
+                is_out = is_out + f"\n\n"
+                self.output_text.insert(tk.END, t_out)
+                self.output_text.insert(tk.END, is_out)
+                self.step_button.config(state=tk.NORMAL)
+                self.reset_button.config(state=tk.NORMAL)
+                self.current_step = 0
             else:
                 self.output_text.insert(
                     tk.END, "No solution found within the given constraints.")
+
         except Exception as e:
             self.output_text.insert(tk.END, f"An error occurred: {str(e)}")
 
         self.solve_button.config(state=tk.NORMAL)
+
+    def show_next_step(self):
+        if self.solution and self.current_step < len(self.solution):
+            move = self.solution[self.current_step]
+            current_state = self.problem.get_initial_state()
+            for i in range(self.current_step):
+                current_state = self.problem.apply_move(
+                    current_state, self.solution[i])
+
+            self.output_text.insert(tk.END, f"Step {self.current_step + 1}:\n")
+            self.output_text.insert(
+                tk.END, self.problem.get_move_description(move, current_state) + "\n")
+            new_state = self.problem.apply_move(current_state, move)
+            self.output_text.insert(tk.END, f"After move:\n{new_state}\n\n")
+
+            self.current_step += 1
+
+            if self.current_step == len(self.solution):
+                self.step_button.config(state=tk.DISABLED)
+                self.output_text.insert(tk.END, "Solution complete!\n")
+
+        self.output_text.see(tk.END)
+
+    def reset_solution(self):
+        self.current_step = 0
+        self.output_text.delete(1.0, tk.END)
+        is_out = f"Initial state:\n{self.problem.get_initial_state()}"
+        is_out = is_out + f"\n\n"
+        self.output_text.insert(tk.END, is_out)
+        self.step_button.config(state=tk.NORMAL)
 
     def clear_output(self):
         self.output_text.delete(1.0, tk.END)
